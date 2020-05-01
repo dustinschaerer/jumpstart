@@ -38,7 +38,8 @@ def rails_6?
 end
 
 def add_gems
-  gem 'administrate', github: "excid3/administrate", branch: 'jumpstart'
+  # gem 'administrate', github: "excid3/administrate", branch: 'jumpstart'
+  gem 'activeadmin'
   gem 'bootstrap', '~> 4.3', '>= 4.3.1'
   gem 'devise', '~> 4.7', '>= 4.7.0'
   gem 'devise-bootstrapped', github: 'excid3/devise-bootstrapped', branch: 'bootstrap4'
@@ -166,67 +167,6 @@ def add_sidekiq
   insert_into_file "config/routes.rb", "#{content}\n\n", after: "Rails.application.routes.draw do\n"
 end
 
-def add_announcements
-  generate "model Announcement published_at:datetime announcement_type name description:text"
-  route "resources :announcements, only: [:index]"
-end
-
-def add_notifications
-  generate "model Notification recipient_id:bigint actor_id:bigint read_at:datetime action:string notifiable_id:bigint notifiable_type:string"
-  route "resources :notifications, only: [:index]"
-end
-
-def add_administrate
-  generate "administrate:install"
-
-  append_to_file "app/assets/config/manifest.js" do
-    "//= link administrate/application.css\n//= link administrate/application.js"
-  end
-
-  gsub_file "app/dashboards/announcement_dashboard.rb",
-    /announcement_type: Field::String/,
-    "announcement_type: Field::Select.with_options(collection: Announcement::TYPES)"
-
-  gsub_file "app/dashboards/user_dashboard.rb",
-    /email: Field::String/,
-    "email: Field::String,\n    password: Field::String.with_options(searchable: false)"
-
-  gsub_file "app/dashboards/user_dashboard.rb",
-    /FORM_ATTRIBUTES = \[/,
-    "FORM_ATTRIBUTES = [\n    :password,"
-
-  gsub_file "app/controllers/admin/application_controller.rb",
-    /# TODO Add authentication logic here\./,
-    "redirect_to '/', alert: 'Not authorized.' unless user_signed_in? && current_user.admin?"
-
-  environment do <<-RUBY
-    # Expose our application's helpers to Administrate
-    config.to_prepare do
-      Administrate::ApplicationController.helper #{@app_name.camelize}::Application.helpers
-    end
-  RUBY
-  end
-end
-
-def add_multiple_authentication
-    insert_into_file "config/routes.rb",
-    ', controllers: { omniauth_callbacks: "users/omniauth_callbacks" }',
-    after: "  devise_for :users"
-
-    generate "model Service user:references provider uid access_token access_token_secret refresh_token expires_at:datetime auth:text"
-
-    template = """
-    env_creds = Rails.application.credentials[Rails.env.to_sym] || {}
-    %i{ facebook twitter github }.each do |provider|
-      if options = env_creds[provider]
-        config.omniauth provider, options[:app_id], options[:app_secret], options.fetch(:options, {})
-      end
-    end
-    """.strip
-
-    insert_into_file "config/initializers/devise.rb", "  " + template + "\n\n",
-          before: "  # ==> Warden configuration"
-end
 
 def add_whenever
   run "wheneverize ."
@@ -261,9 +201,6 @@ after_bundle do
   add_users
   add_webpack
   add_javascript
-  add_announcements
-  add_notifications
-  add_multiple_authentication
   add_sidekiq
   add_friendly_id
 
@@ -273,10 +210,6 @@ after_bundle do
 
   # Migrate
   rails_command "db:create"
-  rails_command "db:migrate"
-
-  # Migrations must be done before this
-  add_administrate
 
   # Commit everything to git
   git :init
